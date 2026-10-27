@@ -69,15 +69,15 @@ The installer copies these files:
 | Action | How |
 |---|---|
 | Move the widget | Drag anywhere on it |
-| Start / pause | ▶ button, or `Space` |
-| Reset the current session | ⟳ button, or `R` |
-| Skip to the next session | ⏭ button, or `S` |
+| Start / pause | ▶ button |
+| Reset the current session | ⟳ button |
+| Skip to the next session | ⏭ button |
 | Always on top on/off | 📌 pin button (top left) |
-| Show / hide the to-do list | List button, or `T` |
+| Show / hide the to-do list | List button |
 | Open Settings | ⚙ button |
 | All actions, switch phase, window mode | Right-click the widget |
 
-Keyboard shortcuts work while the widget has focus and you're not typing in the task box. Press `Esc` to leave the task box.
+Promodor never takes keyboard focus on its own, so switching windows or workspaces never sends your keypresses to it. It only takes focus while you're typing in the task box. Press `Esc` or click another window to give focus back.
 
 ### Window modes
 
@@ -120,12 +120,12 @@ Tasks are saved in `~/.config/promodor/todos.json`.
 
 ## How it works on Wayland
 
-GNOME on Wayland doesn't let apps keep their own window above or below other windows. To get around this, Promodor sets `GDK_BACKEND=x11` and runs through **XWayland**, which comes with Ubuntu. That lets it use the standard X11 always-on-top and keep-below window states, which GNOME's window manager respects.
+GNOME on Wayland doesn't let apps keep their own window above or below other windows, or refuse keyboard focus. To get around this, Promodor forces `GDK_BACKEND=x11` (even if your session sets it to `wayland`) and runs through **XWayland**, which comes with Ubuntu. That lets it use the standard X11 always-on-top and keep-below window states, which GNOME's window manager respects.
 
-To force native Wayland anyway (window modes won't work), run it like this:
+To run it as a native Wayland app anyway (window modes and focus handling won't work), run it like this:
 
 ```bash
-GDK_BACKEND=wayland ./promodor.py
+PROMODOR_NATIVE_WAYLAND=1 ./promodor.py
 ```
 
 ## Troubleshooting

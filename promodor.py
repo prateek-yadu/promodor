@@ -15,8 +15,11 @@ import time
 import uuid
 
 # GNOME on Wayland does not let clients keep themselves above/below other
-# windows. Running through XWayland restores _NET_WM_STATE_ABOVE/BELOW.
-os.environ.setdefault("GDK_BACKEND", "x11")
+# windows or refuse focus. Running through XWayland restores those hints.
+# Some sessions export GDK_BACKEND=wayland, so override it unless the user
+# explicitly opts into native Wayland with PROMODOR_NATIVE_WAYLAND=1.
+if os.environ.get("PROMODOR_NATIVE_WAYLAND") != "1":
+    os.environ["GDK_BACKEND"] = "x11"
 
 import gi  # noqa: E402
 
@@ -79,7 +82,8 @@ CSS = b"""
 #root row { padding: 1px 2px; border-radius: 6px; }
 #root row:hover { background: rgba(255,255,255,0.06); }
 #root row.active { background: rgba(255,107,91,0.18); }
-#root check { background: rgba(255,255,255,0.12); border: none; border-radius: 4px; }
+#root checkbutton { padding: 4px; }
+#root check { background: rgba(255,255,255,0.12); border: none; border-radius: 4px; min-width: 16px; min-height: 16px; }
 #root check:checked { background: #ff6b5b; color: white; }
 #root .dim { color: rgba(242,242,245,0.55); font-size: 9pt; }
 #root .task { font-size: 10pt; }
@@ -168,6 +172,8 @@ class TodoPanel(Gtk.Box):
 
         self.entry = Gtk.Entry(placeholder_text="Add a task and press Enter…")
         self.entry.connect("activate", self.on_add)
+        self.entry.connect("button-press-event", self.win.on_entry_press)
+        self.entry.connect("focus-out-event", lambda *_: self.win.release_focus())
         self.pack_start(self.entry, False, False, 0)
 
         self.listbox = Gtk.ListBox(selection_mode=Gtk.SelectionMode.NONE)
@@ -396,10 +402,22 @@ class PomodoroWindow(Gtk.ApplicationWindow):
         self.set_decorated(False)
         self.set_resizable(False)
         self.set_type_hint(Gdk.WindowTypeHint.UTILITY)
-        self.add_events(Gdk.EventMask.BUTTON_PRESS_MASK)
+        # Never take keyboard focus on its own (window switches, workspace
+        # changes, mapping); it is only borrowed while typing a task.
+        self.set_accept_focus(False)
+        self.set_focus_on_map(False)
+        self._press = None  # (x_root, y_root, button, time) of a press that may become a drag
+        self.add_events(
+            Gdk.EventMask.BUTTON_PRESS_MASK
+            | Gdk.EventMask.BUTTON_RELEASE_MASK
+            | Gdk.EventMask.BUTTON1_MOTION_MASK
+        )
         self.connect("draw", self.on_draw_bg)
         self.connect("button-press-event", self.on_button_press)
+        self.connect("button-release-event", lambda *_: setattr(self, "_press", None))
+        self.connect("motion-notify-event", self.on_motion)
         self.connect("key-press-event", self.on_key)
+        self.connect("focus-out-event", lambda *_: self.release_focus())
         self.connect("configure-event", self.on_configure)
 
         provider = Gtk.CssProvider()
@@ -431,10 +449,10 @@ class PomodoroWindow(Gtk.ApplicationWindow):
         self.root.pack_start(self.current_label, False, False, 0)
 
         controls = Gtk.Box(spacing=10, halign=Gtk.Align.CENTER, margin_top=4)
-        controls.pack_start(icon_button("view-refresh-symbolic", "Reset (R)", self.reset), False, False, 0)
-        self.play_btn = icon_button("media-playback-start-symbolic", "Start / pause (Space)", self.toggle_run, primary=True)
+        controls.pack_start(icon_button("view-refresh-symbolic", "Reset", self.reset), False, False, 0)
+        self.play_btn = icon_button("media-playback-start-symbolic", "Start / pause", self.toggle_run, primary=True)
         controls.pack_start(self.play_btn, False, False, 0)
-        controls.pack_start(icon_button("media-skip-forward-symbolic", "Skip to next (S)", self.skip), False, False, 0)
+        controls.pack_start(icon_button("media-skip-forward-symbolic", "Skip to next", self.skip), False, False, 0)
         self.root.pack_start(controls, False, False, 0)
 
         self.todo_holder = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
@@ -604,12 +622,33 @@ class PomodoroWindow(Gtk.ApplicationWindow):
         if event.type != Gdk.EventType.BUTTON_PRESS:
             return False
         if event.button == 1:
-            self.begin_move_drag(event.button, int(event.x_root), int(event.y_root), event.time)
-            return True
+            # Only arm a drag here; starting it on press would hand the pointer
+            # to the window manager and swallow clicks meant for child widgets.
+            if not self._is_interactive(Gtk.get_event_widget(event)):
+                self._press = (event.x_root, event.y_root, event.button, event.time)
+            return False
         if event.button == 3:
             self.show_menu(event)
             return True
         return False
+
+    def _is_interactive(self, widget):
+        while widget is not None and widget is not self:
+            if widget is self.todo_holder or isinstance(widget, (Gtk.Button, Gtk.Entry, Gtk.Scale)):
+                return True
+            widget = widget.get_parent()
+        return False
+
+    def on_motion(self, _w, event):
+        if not self._press or not (event.state & Gdk.ModifierType.BUTTON1_MASK):
+            self._press = None
+            return False
+        x, y, button, ev_time = self._press
+        if abs(event.x_root - x) + abs(event.y_root - y) < 6:
+            return False
+        self._press = None
+        self.begin_move_drag(button, int(x), int(y), ev_time)
+        return True
 
     def show_menu(self, event):
         menu = Gtk.Menu()
@@ -648,19 +687,20 @@ class PomodoroWindow(Gtk.ApplicationWindow):
             self.save_settings()
             self.apply_window_settings()
 
+    def on_entry_press(self, entry, event):
+        if not self.get_accept_focus():
+            self.set_accept_focus(True)
+            self.present_with_time(event.time)
+            entry.grab_focus()
+        return False
+
+    def release_focus(self):
+        self.set_focus(None)
+        self.set_accept_focus(False)
+
     def on_key(self, _w, event):
-        if isinstance(self.get_focus(), Gtk.Entry):
-            if event.keyval == Gdk.KEY_Escape:
-                self.set_focus(None)
-                return True
-            return False
-        key = Gdk.keyval_name(event.keyval)
-        actions = {"space": self.toggle_run, "r": self.reset, "s": self.skip}
-        if key == "t" and self.settings["todo_enabled"]:
-            self.toggle_todo()
-            return True
-        if key in actions:
-            actions[key]()
+        if event.keyval == Gdk.KEY_Escape:
+            self.release_focus()
             return True
         return False
 
