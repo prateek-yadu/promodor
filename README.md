@@ -95,6 +95,16 @@ Promodor never takes keyboard focus on its own, so switching windows or workspac
 4. Each focus session you finish adds a 🍅 to the current task.
 5. Tick a task when it's done. If it was the current task, the next unfinished task becomes current. **Clear done** removes all ticked tasks.
 
+#### What the 🍅 next to a task means
+
+The 🍅 (a tomato; *pomodoro* is Italian for tomato) counts the focus sessions you've finished on that task. `🍅2` means two full focus sessions ended while that task was your current task.
+
+- A task gets a 🍅 only when a focus session **runs to the end** while it's the current task.
+- Skipping a focus session, or finishing a break, doesn't add one.
+- A task with no finished sessions shows no 🍅.
+- The count goes to whichever task was current when the session ended. If you switch tasks mid-session, the new task gets it.
+- The count is kept with the task and is removed when you delete the task or clear it with **Clear done**.
+
 ## Settings
 
 Change settings in the Settings window; changes apply right away. They are saved to `~/.config/promodor/settings.json`:
