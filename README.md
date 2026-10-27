@@ -144,3 +144,7 @@ install.sh       # per-user installer / uninstaller
 promodor.svg     # app icon
 docs/            # screenshots
 ```
+
+## License
+
+[MIT](LICENSE) © 2026 Prateek Yadu
