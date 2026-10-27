@@ -48,11 +48,19 @@ To also start it when you log in:
 ./install.sh --autostart
 ```
 
-To uninstall (your settings and tasks are kept):
+To uninstall but keep your settings and tasks, so a reinstall picks up where you left off:
 
 ```bash
 ./install.sh --uninstall
 ```
+
+To remove Promodor completely, including your settings, tasks and Python caches:
+
+```bash
+./install.sh --purge
+```
+
+Both options close Promodor first if it's running. Promodor has no other cache or log files and never writes outside your home folder, so `--purge` leaves nothing behind. The only thing left is the source folder you ran the script from; delete it yourself if you no longer need it.
 
 The installer copies these files:
 
